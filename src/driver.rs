@@ -1658,14 +1658,10 @@ impl ProcessingSession {
         } else {
             warnings = self.tex_pass(None, status)?;
             let maybe_biber = self.check_biber_requirement()?;
-            let maybe_makeglossaries = self.check_makeglossaries_requirement()?;
 
             if let Some(biber) = maybe_biber {
                 self.bs.external_tool_pass(&biber, status)?;
                 Some(RerunReason::Biber)
-            } else if let Some(makeglossaries) = maybe_makeglossaries {
-                self.bs.external_tool_pass(&makeglossaries, status)?;
-                Some(RerunReason::MakeGlossaries)
             } else if self.is_bibtex_needed() {
                 self.bibtex_pass(status)?;
                 Some(RerunReason::Bibtex)
@@ -1673,6 +1669,13 @@ impl ProcessingSession {
                 self.is_rerun_needed(status)
             }
         };
+
+        let maybe_makeglossaries = self.check_makeglossaries_requirement()?;
+
+        if let Some(makeglossaries) = maybe_makeglossaries {
+            self.bs.external_tool_pass(&makeglossaries, status)?;
+            rerun_result = Some(RerunReason::MakeGlossaries);
+        }
 
         // Now we enter the main rerun loop.
 
