@@ -1250,6 +1250,7 @@ impl ProcessingSessionBuilder {
 #[derive(Debug, Clone)]
 enum RerunReason {
     Biber,
+    MakeGlossaries,
     Bibtex,
     FileChange(String),
 }
@@ -1657,10 +1658,14 @@ impl ProcessingSession {
         } else {
             warnings = self.tex_pass(None, status)?;
             let maybe_biber = self.check_biber_requirement()?;
+            let maybe_makeglossaries = self.check_makeglossaries_requirement()?;
 
             if let Some(biber) = maybe_biber {
                 self.bs.external_tool_pass(&biber, status)?;
                 Some(RerunReason::Biber)
+            } else if let Some(makeglossaries) = maybe_makeglossaries {
+                self.bs.external_tool_pass(&makeglossaries, status)?;
+                Some(RerunReason::MakeGlossaries)
             } else if self.is_bibtex_needed() {
                 self.bibtex_pass(status)?;
                 Some(RerunReason::Bibtex)
@@ -1683,6 +1688,7 @@ impl ProcessingSession {
                 match rerun_result {
                     Some(RerunReason::Biber) => "biber was run".to_owned(),
                     Some(RerunReason::Bibtex) => "bibtex was run".to_owned(),
+                    Some(RerunReason::MakeGlossaries) => "makeglossaries was run".to_owned(),
                     Some(RerunReason::FileChange(ref s)) => format!("\"{s}\" changed"),
                     None => break,
                 }
@@ -1989,6 +1995,38 @@ impl ProcessingSession {
         Rc::try_unwrap(self.bs.mem.files)
             .expect("multiple strong refs to MemoryIo files")
             .into_inner()
+    }
+
+    fn check_makeglossaries_requirement(&self) -> Result<Option<ExternalToolPass>> {
+        let s = (
+            crate::config::is_config_test_mode_activated(),
+            std::env::var("TECTONIC_TEST_FAKE_MAKEGLOSSARIES"),
+        );
+
+        let mut input = PathBuf::from(&self.primary_input_tex_path);
+        input.set_extension("");
+        println!("the input is: {:?}", input);
+        let argv = match s {
+            (true, Ok(text)) => text.split_whitespace().map(|x| x.to_owned()).collect(),
+            _ => vec![
+                "makeglossaries".to_owned(),
+                input.to_str().unwrap().to_owned(),
+            ],
+        };
+
+        let files_extensions = &[".aux", ".glo", ".slo", ".acn", ".ist"];
+        let mem_files = &*self.bs.mem.files.borrow();
+        let mut extra_requires = HashSet::new();
+        for mfn in mem_files.keys() {
+            if files_extensions.iter().any(|e| mfn.ends_with(e)) {
+                extra_requires.insert(mfn.to_owned());
+            }
+        }
+
+        Ok(Some(ExternalToolPass {
+            argv,
+            extra_requires,
+        }))
     }
 
     /// See if we need to run `biber`, and parse the `.run.xml` file from the
