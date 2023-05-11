@@ -2005,7 +2005,6 @@ impl ProcessingSession {
 
         let mut input = PathBuf::from(&self.primary_input_tex_path);
         input.set_extension("");
-        println!("the input is: {:?}", input);
         let argv = match s {
             (true, Ok(text)) => text.split_whitespace().map(|x| x.to_owned()).collect(),
             _ => vec![
